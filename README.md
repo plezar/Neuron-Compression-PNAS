@@ -32,11 +32,6 @@ Contains analyses of immunocytochemistry (ICC), immunohistochemistry (IHC), morp
 ### **`Figure_5/`**
 Includes preprocessing, QC, Seurat workflows, multi-dataset integration, BayesPrism outputs, and all scripts used to analyze and visualize single-cell and spatially informed human GBM datasets relevant to mechanical stress signatures.
 
-### **Other files**
-- **`Patzke-Datta.Rproj`** — RStudio project file.
-- **`structure.txt`** — Overview of directory layout and dependencies.
-
----
 
 ## Data Availability
 
