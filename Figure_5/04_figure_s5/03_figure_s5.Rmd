@@ -1,0 +1,47 @@
+---
+title: "Figure 5"
+author: "Maksym Zarodniuk"
+date: "Compiled on `r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+```{r, include=FALSE}
+library(tidyverse)    # dplyr, ggplot2, readr, tibble, pipes
+library(ggplot2)      # plotting (already loaded via tidyverse)
+library(rstatix)      # wilcox_test(), add_significance(), add_xy_position()
+library(ggpubr)       # stat_pvalue_manual()
+library(cowplot)      # theme_cowplot()
+```
+
+## Figure S5C
+
+```{r, fig.height=4, fig.width=3}
+scale_factor <- 2
+colorpal <- rev(c("#FF4040", "#4040FF"))
+quant <- read.csv('../data/2025-09-19_FOSB_quant_Charles.csv')
+quant$Group <- factor(quant$Group, levels = c("Ctrl", "Comp"))
+
+stat.test <- quant %>%
+  rstatix::wilcox_test(Rel.Intensity ~ Group) %>%
+  add_significance("p") %>%
+  add_xy_position(x = "Group", fun = "max")
+
+quant_plot <- quant %>% group_by(Group) %>% summarise(Mean = mean(Rel.Intensity), SD = sd(Rel.Intensity)) %>% cbind(data.frame(n = c(3, 2))) %>% mutate(SEM = SD/sqrt(n)) %>% ungroup()
+
+p1 <- ggplot(quant_plot) +
+  geom_bar( aes(x=Group, y=Mean, fill=Group), color="black", stat="identity", width = .7, linewidth = 0.5) +
+  geom_errorbar( aes(x=Group, ymin=Mean-SEM, ymax=Mean+SEM), width=0.2, linewidth = 0.5) +
+  geom_point(data = quant, aes(x=Group, y = Rel.Intensity, fill=Group), shape=21, alpha = 0.4, size=.3*scale_factor, stroke=0.4, position=position_jitter(height=0, width=0)) +
+  stat_pvalue_manual(stat.test, label = "p.signif", tip.length = 0.005, size=8) +
+  scale_fill_manual(values = colorpal) +
+  theme_cowplot(10*scale_factor) +
+  ylim(0, 1.3) +
+  labs(x = NULL, y = "FOSB rel. MFI") +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, vjust = 1, hjust=1), axis.title.y = element_text(size = 15), axis.text.y = element_text(size = 12))
+
+p1
+```

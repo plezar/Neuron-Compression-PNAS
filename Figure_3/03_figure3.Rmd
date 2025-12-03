@@ -1,0 +1,418 @@
+---
+title: "Figure 3"
+author: "Maksym Zarodniuk"
+date: "Compiled on `r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+```{r, include=FALSE}
+library(knitr)
+library(DESeq2)
+library(tidyverse)
+library(ComplexHeatmap)
+source("util.R")
+library(patchwork)
+library(GOSemSim)
+library(ggtree)
+library(ggraph)
+library(ggrepel)
+library(cowplot)
+library(Seurat)
+library(metaseqR2)
+library(enrichplot)
+library(lsei)
+library(circlize)
+
+scale_factor <- 2
+out_dir <- "figures"
+```
+
+## Figure S1C
+
+```{r, fig.width=10, fig.height=4}
+### ===== iNs =====
+
+dds_downsampled <- readRDS("results/dds_downsampled_iN.rds")
+vsd_downsampled <- vst(dds_downsampled)
+vsd_corrected <- limma::removeBatchEffect(assay(vsd_downsampled),
+                                          # D0 of differentiation is specified as batch since it strongly influences gene expression on PCA
+                                        batch = dds_downsampled$D0,
+                                        design = model.matrix(~ Condition + CellLine, data = colData(dds_downsampled)))
+pca <- prcomp(t(vsd_corrected))
+pc_scores <- pca$x[,1:2]
+S1C_1 <- cbind(as.data.frame(pc_scores), colData(dds_downsampled)) %>%
+  filter(!grepl("3", CellLine)) %>%
+  ggplot(aes(x=PC1, y=PC2, color=group)) +
+  geom_point(size = 3) +
+  cowplot::theme_cowplot(10*scale_factor) +
+  scale_shape_manual(values=c(15, 16, 17)) +
+  scale_color_manual(values = c("#79CFE2", "#5862AC", "#F2775F", "#DF2C26", "#AAD05A", "#098C45"))+
+  theme(axis.text=element_blank(),
+        axis.ticks=element_blank(),
+        legend.text = element_text(size=7*scale_factor)) +
+  ggtitle("iNs") +
+  labs(color = NULL)
+
+#ggsave(S1C_1, path=out_dir, filename= "S1C_1.pdf", width=6*scale_factor, height=4.3*scale_factor, units="cm", dpi = 700)
+
+
+### ===== mGlia ======
+
+dds_downsampled <- readRDS("results/dds_downsampled_mG.rds")
+vsd_downsampled <- vst(dds_downsampled)
+vsd_corrected <- limma::removeBatchEffect(assay(vsd_downsampled),
+                                        batch = dds_downsampled$D0,
+                                        design = model.matrix(~ Condition + CellLine, data = colData(dds_downsampled)))
+pca <- prcomp(t(vsd_corrected))
+pc_scores <- pca$x[,1:2]
+S1C_2 <- cbind(as.data.frame(pc_scores), colData(dds_downsampled)) %>%
+  filter(!grepl("3", CellLine)) %>%
+  ggplot(aes(x=PC1, y=PC2, color=group)) +
+  geom_point(size = 3) +
+  cowplot::theme_cowplot(10*scale_factor) +
+  scale_shape_manual(values=c(15, 16, 17)) +
+  scale_color_manual(values = c("#79CFE2", "#5862AC", "#F2775F", "#DF2C26", "#AAD05A", "#098C45"))+
+  theme(axis.text=element_blank(),
+        axis.ticks=element_blank(),
+        legend.text = element_text(size=7*scale_factor)) +
+  ggtitle("mGlia") +
+  labs(color = NULL)
+
+#ggsave(S1C_2, path=out_dir, filename= "S1C_2.pdf", width=6*scale_factor, height=4.3*scale_factor, units="cm", dpi = 700)
+
+S1C_1 + S1C_2
+```
+
+## Figure S1D
+
+NNLS-based cell type deconvolution of the murine RNA-seq data ($b$). I use tabula muris single-cell data and generate pseudobulk profiles for the reference matrix ($R$). NNLS tries to solve for $x$ (the proportions vector) as 
+$\underset{x\gt0}{\operatorname{min}}||Rx-b||$. However, a key limitation in this context is that the bulk RNA-seq data may not represent a true linear mixture of the cell types in the reference, as the murine cells were cultured in vitro for over two months. This extended culture period may induce transcriptional changes not captured in the reference profiles, reducing the accuracy of the deconvolution.
+
+```{r, message=F, warning=F}
+load("data/mmus/mtx_data.RData")
+muris_mtx <- readRDS("data/tabula_Muris/counts_mtx_merged.rds")
+muris_anno <- readRDS("data/tabula_Muris/facs_annotation.rds")
+
+obj <- CreateSeuratObject(counts = muris_mtx[,grepl("Brain", muris_anno$tissue)], meta.data = muris_anno[grepl("Brain", muris_anno$tissue),])
+obj <- NormalizeData(obj)
+obj <- FindVariableFeatures(obj, selection.method = "vst", nfeatures = 2000)
+obj <- ScaleData(obj)
+obj <- RunPCA(obj)
+obj <- FindNeighbors(obj, dims = 1:9)
+obj <- FindClusters(obj, resolution = 0.5)
+obj <- RunUMAP(obj, dims = 1:9)
+allmarkers <- FindAllMarkers(object = obj, only.pos = T, logfc.threshold = 1, min.pct = 0.1, group.by = "cell_ontology_class")
+
+top_markers <- allmarkers %>% filter(gene %in% rownames(count_mtx)) %>%
+  group_by(cluster) %>%
+  slice_max(order_by = avg_log2FC, n = 100) %>%
+  ungroup()
+
+# Subset the Seurat object to only include the selected marker genes
+marker_genes <- unique(top_markers$gene)
+DefaultAssay(obj) <- "RNA"
+obj_subset <- subset(obj, features = marker_genes)
+
+# Pseudobulk aggregation: sum expression for each cell type
+reference_matrix <- AggregateExpression(obj_subset, group.by = "cell_ontology_class", assays = "RNA", slot = "counts")$RNA
+reference_cpm <- sweep(reference_matrix, 2, colSums(reference_matrix), FUN = "/") * 1e6
+reference_log <- log1p(reference_cpm)
+```
+
+```{r, fig.width=8, fig.height=2}
+set.seed(40)
+count_mtx_downsampled <- downsampleCounts(count_mtx)
+bulk_cpm <- sweep(count_mtx_downsampled, 2, colSums(count_mtx_downsampled), FUN = "/") * 1e6
+bulk_log <- log1p(bulk_cpm)
+bulk_log <- bulk_log[rownames(reference_matrix),]
+cell_proportions <- deconvolve_nnls(t(bulk_log), reference_log)
+
+ht = Heatmap(t(cell_proportions),
+        col = colorRamp2(c(0, .3), c("white", "darkgreen")),
+        show_column_names = F,
+        show_column_dend = F,
+        show_row_dend = F,
+        rect_gp = gpar(col = "white", lwd = 1),
+        name = "x")
+ht
+```
+
+```{r, eval=F}
+pdf(paste0(out_dir, "/S1D.pdf"), width = 6, height = 2)
+draw(ht)
+dev.off()
+```
+
+## Figure 3C
+
+```{r, fig.width=8, fig.height=5}
+goGSEA_merged_iN <- read.csv("results/goGSEA_merged_iN.csv", row.names = 1)
+goGSEA_merged_mG <- read.csv("results/goGSEA_merged_mG.csv", row.names = 1)
+go_terms_to_plot <- c("GO:0001666", "GO:0008637", "GO:0097193", "GO:0097191", "GO:0050727", "GO:0034612", "GO:0071559", "GO:0007179", "GO:0070482", "GO:0006096", "GO:0006119", "GO:0006979")
+
+goGSEA_merged <- inner_join(goGSEA_merged_iN, goGSEA_merged_mG, by = "ID", suffix = c(":iN", ":mG"))
+goGSEA_merged <- goGSEA_merged %>% filter(ID %in% go_terms_to_plot)
+goGSEA_merged <- goGSEA_merged %>% pivot_longer(
+    cols      = ends_with(c("mG", "iN")),     # or cols = everything()
+    names_to  = c(".value", "sample"),          # .value → keep that as the new col name
+    names_sep = ":") %>%
+  mutate(log10p = -log10(p.adjust)) %>%
+  dplyr::select(Description, CellLine, NES, p.adjust, log10p)
+
+## Clustering GO terms based on semantic similarity
+hsGO <- godata('org.Hs.eg.db', ont="BP")
+sim_mtx <- mgoSim(go_terms_to_plot, go_terms_to_plot, semData=hsGO, measure="Wang", combine=NULL)
+dist_mtx <- 1/sim_mtx
+col_clust <- hclust(as.dist(dist_mtx)) # hclust with distance matrix
+ggtree_plot_col <- ggtree(col_clust)
+sc <- scale_colour_gradient2(
+  low = "blue",
+  mid = "white",
+  high = "red"
+)
+
+dotplot <- ggplot(goGSEA_merged %>% filter(!grepl("3", CellLine)), aes(x=CellLine, y = Description, color = NES, size = log10p)) + 
+  geom_point() +
+  geom_point(aes(size=log10p), shape = 21, colour="black", stroke=0.5) +
+  cowplot::theme_cowplot() +
+  theme(axis.text.x = element_text(angle = 90,  vjust = 0.5, hjust=1),
+        axis.line = element_blank()) +
+  ylab('') +
+  xlab(NULL) +
+  theme(axis.ticks = element_blank()) +
+  scale_y_discrete(position = "right") +
+  sc
+ggtree_plot_col <- ggtree_plot_col + aplot::ylim2(dotplot)
+
+p <- ggtree_plot_col +
+  dotplot + 
+  plot_layout(ncol = 2, widths = c(0.7, 4))
+
+p
+#ggsave(p, path=out_dir, filename="GO_NES_plots.pdf", width=7.7, height=3.5, dpi=700)
+```
+
+## Figure S3D
+
+```{r}
+load("results/HALLMARK_merged_mG.RData")
+```
+
+```{r}
+p1 <- gseaplot2(hallmarkGSEA_Wbo2, geneSetID = c("HALLMARK_HYPOXIA", "HALLMARK_TNFA_SIGNALING_VIA_NFKB"), pvalue_table = F, subplots=1:2)
+p1[[1]] <- p1[[1]] + ggtitle("mG #1")
+p1[[1]] <- p1[[1]] + theme(legend.position = "top", legend.direction = "vertical")
+p1[[1]] <- p1[[1]] + ylim(0, 0.85)
+p1[[1]] <- p1[[1]] + scale_color_manual(values = hallmark_colors)
+p1[[2]] <- p1[[2]] + scale_color_manual(values = hallmark_colors)
+#ggsave(p1, path="figures", filename= "gseaplot2_mG1.pdf", width=3, height=2.7, dpi = 700, units = "in")
+p1
+```
+
+```{r}
+p1 <- gseaplot2(hallmarkGSEA_I27, geneSetID = c("HALLMARK_HYPOXIA", "HALLMARK_TNFA_SIGNALING_VIA_NFKB"), pvalue_table = F, subplots=1:2)
+p1[[1]] <- p1[[1]] + ggtitle("mG #2")
+p1[[1]] <- p1[[1]] + theme(legend.position = "top", legend.direction = "vertical")
+p1[[1]] <- p1[[1]] + ylim(0, 0.85)
+p1[[1]] <- p1[[1]] + scale_color_manual(values = hallmark_colors)
+p1[[2]] <- p1[[2]] + scale_color_manual(values = hallmark_colors)
+#ggsave(p1, path="figures", filename= "gseaplot2_mG2.pdf", width=3, height=2.7, dpi = 700, units = "in")
+p1
+```
+```{r}
+load("results/HALLMARK_merged_iN.RData")
+```
+
+```{r}
+p1 <- gseaplot2(hallmarkGSEA_Wbo2, geneSetID = c("HALLMARK_HYPOXIA", "HALLMARK_INFLAMMATORY_RESPONSE", "HALLMARK_APOPTOSIS"), pvalue_table = F, subplots=1:2)
+p1[[1]] <- p1[[1]] + ggtitle("iN #1")
+p1[[1]] <- p1[[1]] + theme(legend.position = "top", legend.direction = "vertical")
+p1[[1]] <- p1[[1]] + ylim(0, 0.85)
+p1[[1]] <- p1[[1]] + scale_color_manual(values = hallmark_colors)
+p1[[2]] <- p1[[2]] + scale_color_manual(values = hallmark_colors)
+#ggsave(p1, path="figures", filename= "gseaplot2_iN1.pdf", width=3, height=2.7, dpi = 700, units = "in")
+p1
+```
+
+```{r}
+p1 <- gseaplot2(hallmarkGSEA_I27, geneSetID = c("HALLMARK_HYPOXIA", "HALLMARK_INFLAMMATORY_RESPONSE", "HALLMARK_APOPTOSIS"), pvalue_table = F, subplots=1:2)
+p1[[1]] <- p1[[1]] + ggtitle("iN #2")
+p1[[1]] <- p1[[1]] + theme(legend.position = "top", legend.direction = "vertical")
+p1[[1]] <- p1[[1]] + ylim(0, 0.85)
+p1[[1]] <- p1[[1]] + scale_color_manual(values = hallmark_colors)
+p1[[2]] <- p1[[2]] + scale_color_manual(values = hallmark_colors)
+#ggsave(p1, path="figures", filename= "gseaplot2_iN2.pdf", width=3, height=2.7, dpi = 700, units = "in")
+p1
+```
+
+## Figure 3D
+
+```{r}
+res_Wbo2 <- read.csv("results/iN1_neuron.csv", row.names = 1)
+
+# Leading edge genes from select pathways
+genes_to_plot_hypox <- lapply(goGSEA_merged_iN[goGSEA_merged_iN$ID=="GO:0001666",]$core_enrichment,
+       function(x) {
+         str_split(x, "/", Inf, T)[1,]
+       })
+genes_to_plot_hypox <- unique(unlist(genes_to_plot_hypox))
+genes_to_plot_apoptosis <- lapply(goGSEA_merged_iN[goGSEA_merged_iN$ID=="GO:0051402",]$core_enrichment,
+       function(x) {
+         str_split(x, "/", Inf, T)[1,]
+       })
+genes_to_plot_apoptosis <- unique(unlist(genes_to_plot_apoptosis))
+genes_to_plot_inflam <- lapply(goGSEA_merged_iN[goGSEA_merged_iN$ID=="GO:0050727",]$core_enrichment,
+       function(x) {
+         str_split(x, "/", Inf, T)[1,]
+       })
+genes_to_plot_inflam <- unique(unlist(genes_to_plot_inflam))
+
+y <- list("response to hypoxia" = genes_to_plot_hypox, "neuron apoptotic process" = genes_to_plot_apoptosis, "inflammatory response" = genes_to_plot_inflam)
+
+# Select genes to highlight in the panel
+y_short <- list("GO:0001666" = c("HK2", "PDK1", "PGK1", "ENO1", "SLC2A1",
+           "VEGFA", "ANG", "ANGPTL4", "CXCL12", "CXCR4",
+           "BNIP3L", "BNIP3", "FAM162A",
+           "BBC3", "CASP8", "BAX"),
+          "GO:0051402" = c("FAM162A", "BNIP3", "DAXX", "FOXO3", "DDIT3", 
+                     "BBC3", "EGR1", "BTG2", "CASP8", "PARP3", 
+                     "E2F1", "CHEK2", "PML", "ATM"),
+          "GO:0006954" = c("RELA", "NFKBIA", "TNFAIP3", "TLR4",
+                                  "CEBPB", "MAP3K8", "FOS", "JUN",
+                                  "SOCS3", "IL6ST", "IL10RA", "OSMR"))
+
+fcs <- setNames(res_Wbo2[unlist(y),]$log2FoldChange, unlist(y))
+
+set.seed(42)
+p <- cnetplot(y, foldChange=fcs, color_category = "black") +
+  scale_color_gradient2(name='LFC', low='darkblue', high='firebrick')
+p$layers[[4]] <- NULL
+p1 <- p + geom_node_text(data=p$data[which(p$data$name %in% c(p$data$name[1:3], unname(unlist(y_short))) ),], #c(p$data$name[1:3],unname(unlist(y_short))) ),],
+                           aes(x=x, y=y, label=name), color='black', bg.color="white",
+                           segment.size=0.5, repel=TRUE, size=5, min.segment.length = 0)
+
+p1
+#ggsave(p1, path="/Volumes/TOSHIBA/Patzke_project/results/", filename= "cnetplot.pdf", width=4*2, height=2.7*2, dpi = 700, units = "in")
+```
+
+## Figure 3E
+
+HOMER was ran using `bin/findMotifs.pl /Volumes/TOSHIBA/Patzke_project/RNA-seq/DEGs/iN1_glia_DEGs.txt mouse ms_results/ -start -400 -end 100 -len 8,10 -p 1`
+
+```{r, fig.width=8, fig.height=4}
+hs_hits <- read.csv("data/HOMER_out/hs_results/knownResults.txt", sep="\t")
+hs_hits$Rank <- 1:nrow(hs_hits)
+hs_hits$Motif.Name <- str_split(hs_hits$Motif.Name, "/", Inf, T)[,1]
+mms_hits <- read.csv("data/HOMER_out/ms_results/knownResults.txt", sep="\t")
+mms_hits$Rank <- 1:nrow(mms_hits)
+mms_hits$Motif.Name <- str_split(mms_hits$Motif.Name, "/", Inf, T)[,1]
+
+p1 <- ggplot(hs_hits, aes(x=Rank, y=Log.P.value)) +
+  geom_point(size=0.5*scale_factor, shape=21) +
+  geom_text_repel(data = hs_hits %>% head(3),
+                  aes(x = Rank, y = Log.P.value, label = Motif.Name), color="black",
+                  #min.segment.length = 1000,
+                  seed = 24,
+                  box.padding = .5,
+                  nudge_x = 0.1,
+                  #nudge_y = 2,
+                  #force = 500,
+                  min.segment.length = 0,
+                  show.legend = FALSE,
+                  max.overlaps =15,
+                  size=2.5*scale_factor
+  ) +
+  theme_cowplot(10*scale_factor) +
+  labs(x="Rank",
+       y="logP") + 
+  theme(legend.position = "none"
+  )  + scale_y_reverse(limits = c(0, -30)) + scale_x_continuous(breaks=c(0, 400))
+
+p2 <- ggplot(mms_hits, aes(x=Rank, y=Log.P.value)) +
+  geom_point(size=0.5*scale_factor, shape=21) +
+  geom_text_repel(data = mms_hits %>% filter(mms_hits$Motif.Name %in% c("Fosl2(bZIP)", "Fos(bZIP)", "Atf1(bZIP)", "JunB(bZIP)")),
+                  aes(x = Rank, y = Log.P.value, label = Motif.Name), color="black",
+                  #min.segment.length = 1000,
+                  seed = 24,
+                  box.padding = .5,
+                  nudge_x = 100,
+                  #nudge_y = 2,
+                  force = 300,
+                  min.segment.length = 0,
+                  show.legend = FALSE,
+                  max.overlaps =15,
+                  size=2.5*scale_factor
+  ) +
+  theme_cowplot(10*scale_factor) +
+  labs(x="Rank",
+       y="logP") + 
+  theme(legend.position = "none"
+  )  + scale_y_reverse(limits = c(0, -30)) + scale_x_continuous(breaks=c(0, 400))
+
+
+
+p <- p1 + plot_spacer() + p2 + plot_layout(widths = c(1, .3, 1))
+p
+#ggsave(p, path=out_dir, filename= "HOMER_pvals.pdf", height=3.5*scale_factor, width=8*scale_factor, units = "cm", dpi = 700)
+```
+
+## Figure 3A
+
+```{r, fig.width = 8, fig.height = 10}
+res_Wbo2 <- read.csv("results/iN1_neuron.csv", row.names = 1)
+res_I27 <- read.csv("results/iN2_neuron.csv", row.names = 1)
+res_1019 <- read.csv("results/iN3_neuron.csv", row.names = 1)
+
+p1 <- plot_volcano(res_Wbo2,
+             rev(c("#5862AC", "lightgrey","#79CFE2")),
+             ylim = c(0, 50),
+             genes_to_plot_hypox,
+             title = "iN #1")
+
+p2 <- plot_volcano(res_I27,
+             c("#F2775F", "lightgrey","#DF2C26"),
+             ylim = c(0, 5),
+             rownames(res_I27)[1:8],
+             title = "iN #2") + labs(y = NULL)
+
+p3 <- plot_volcano(res_1019,
+             c("#AAD05A","lightgrey","#098C45"),
+             ylim = c(0, 10),
+             rownames(res_1019)[1],
+             title = "iN #3")
+
+res_Wbo2 <- read.csv("results/iN1_glia.csv", row.names = 1)
+res_I27 <- read.csv("results/iN2_glia.csv", row.names = 1)
+res_1019 <- read.csv("results/iN3_glia.csv", row.names = 1)
+
+p4 <- plot_volcano(res_Wbo2,
+             rev(c("#5862AC", "lightgrey","#79CFE2")),
+             ylim = c(0, 50),
+             rownames(res_I27)[1:50],
+             title = "mGlia #1")
+
+p5 <- plot_volcano(res_I27,
+             c("#F2775F", "lightgrey","#DF2C26"),
+             ylim = c(0, 10),
+             rownames(res_I27)[1:50],
+             title = "mGlia #2") + labs(y = NULL)
+
+p6 <- plot_volcano(res_1019,
+             c("#AAD05A","lightgrey","#098C45"),
+             ylim = c(0, 20),
+             rownames(res_I27)[1:50],
+             title = "mGlia #3")
+
+p <- p1 + p2 + p4 + p5 + plot_layout(nrow = 2)
+
+p
+#ggsave(p, path=out_dir, filename= "Figs_2A_B.pdf", height=8*scale_factor, width=7*scale_factor, units = "cm", dpi = 700)
+```
+
+```{r}
+sessionInfo()
+```

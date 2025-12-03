@@ -1,0 +1,649 @@
+---
+title: "Figure 5"
+author: "Maksym Zarodniuk"
+date: "Compiled on `r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+```{r, include=FALSE}
+library(tidyverse)
+library(ggpubr)
+library(cowplot)
+library(rstatix)
+library(patchwork)
+library(org.Hs.eg.db)
+library(DESeq2)
+library(clusterProfiler)
+library(msigdbr)
+library(lemon)
+library(Seurat)
+library(BayesPrism)
+library(edgeR)
+library(ggrepel)
+source("../Figure_3/util.R")
+```
+
+## Figure 5G
+
+```{r, fig.height=4, fig.width=3}
+scale_factor <- 2
+colorpal <- rev(c("#FF4040", "#4040FF"))
+
+mfi <- read.csv('data/VGLUT_HIF_MFI.csv')
+mfi$VGLUT.MFI <- mfi$VGLUT.MFI/max(mfi$VGLUT.MFI)
+mfi$HIF.MFI.Mean <- mfi$HIF.MFI.Mea/max(mfi$HIF.MFI.Mean)
+
+## VGLUT1 ----------------------------------------------------------------------
+
+mfi$BioID <- str_split(mfi$Sample, "-", Inf, T)[,1]
+mfi$Group <- factor(mfi$Group, levels = c("C", "E"))
+levels(mfi$Group) <- c("Ctrl", "Comp")
+
+stat.test <- mfi %>%
+  rstatix::wilcox_test(VGLUT.MFI ~ Group) %>%
+  add_significance("p") %>%
+  add_xy_position(x = "Group", fun = "max")
+
+mfi_plot <- mfi %>% group_by(Group) %>% summarise(Mean = mean(VGLUT.MFI), SD = sd(VGLUT.MFI), n = n_distinct(BioID), SEM = SD/sqrt(n)) %>% ungroup()
+
+p1 <- ggplot(mfi_plot) +
+  geom_bar( aes(x=Group, y=Mean, fill=Group), color="black", stat="identity", width = .7, linewidth = 0.5) +
+  geom_errorbar( aes(x=Group, ymin=Mean-SEM, ymax=Mean+SEM), width=0.2, linewidth = 0.5) +
+  geom_point(data = mfi, aes(x=Group, y = VGLUT.MFI, fill=Group), shape=21, alpha = 0.4, size=.3*scale_factor, stroke=0.4, position=position_jitter(height=0, width=0)) +
+  stat_pvalue_manual(stat.test, label = "p.signif", tip.length = 0.005, size=8) +
+  scale_fill_manual(values = colorpal) +
+  theme_cowplot(10*scale_factor) +
+  ylim(0, 1.5) +
+  labs(x = NULL, y = "VGLUT1 MFI") +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, vjust = 1, hjust=1), axis.title.y = element_text(size = 15), axis.text.y = element_text(size = 12))
+
+p1
+```
+
+## Figure 5H
+
+```{r, fig.height=4, fig.width=3}
+stat.test <- mfi %>%
+  rstatix::wilcox_test(HIF.MFI.Mean ~ Group) %>%
+  add_significance("p") %>%
+  add_xy_position(x = "Group", fun = "max")
+
+mfi_plot <- mfi %>% group_by(Group) %>% summarise(Mean = mean(HIF.MFI.Mean), SD = sd(HIF.MFI.Mean), n = n_distinct(BioID), SEM = SD/sqrt(n)) %>% ungroup()
+
+p2 <- ggplot(mfi_plot) +
+  geom_bar( aes(x=Group, y=Mean, fill=Group), color="black", stat="identity", width = .7, linewidth = 0.5) +
+  geom_errorbar( aes(x=Group, ymin=Mean-SEM, ymax=Mean+SEM), width=0.2, linewidth = 0.5) +
+  geom_point(data = mfi, aes(x=Group, y = HIF.MFI.Mean, fill=Group), shape=21, alpha = 0.4, size=.3*scale_factor, stroke=0.4, position=position_jitter(height=0, width=0)) +
+  stat_pvalue_manual(stat.test, label = "p.signif", tip.length = 0.005, size=8) +
+  scale_fill_manual(values = colorpal) +
+  theme_cowplot(10*scale_factor) +
+  ylim(0, 1.5) +
+  labs(x = "", y = "Nuc.HIF1a MFI") +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, vjust = 1, hjust=1), axis.title.y = element_text(size = 15), axis.text.y = element_text(size = 12))
+
+p2
+```
+
+## Figure 5C
+
+```{r, fig.height=4, fig.width=3}
+scale_factor <- 2
+colorpal <- rev(c("#FF4040", "#4040FF"))
+
+quant <- read.csv('data/GFAP_NeuN_quant.csv')
+
+quant$BioID <- quant$Sample
+quant$Group <- factor(quant$Group, levels = c("C", "E"))
+levels(quant$Group) <- c("Ctrl", "Comp")
+
+## GFAP ----------------------------------------------------------------------
+
+stat.test <- quant %>%
+  rstatix::wilcox_test(GFAP_pct_area ~ Group) %>%
+  add_significance("p") %>%
+  add_xy_position(x = "Group", fun = "max")
+
+quant_plot <- quant %>% group_by(Group) %>% summarise(Mean = mean(GFAP_pct_area), SD = sd(GFAP_pct_area), n = n_distinct(BioID), SEM = SD/sqrt(n)) %>% ungroup()
+
+p1 <- ggplot(quant_plot) +
+  geom_bar( aes(x=Group, y=Mean, fill=Group), color="black", stat="identity", width = .7, linewidth = 0.5) +
+  geom_errorbar( aes(x=Group, ymin=Mean-SEM, ymax=Mean+SEM), width=0.2, linewidth = 0.5) +
+  geom_point(data = quant, aes(x=Group, y = GFAP_pct_area, fill=Group), shape=21, alpha = 0.4, size=.3*scale_factor, stroke=0.4, position=position_jitter(height=0, width=0)) +
+  stat_pvalue_manual(stat.test, label = "p.signif", tip.length = 0.005, size=8) +
+  scale_fill_manual(values = colorpal) +
+  theme_cowplot(10*scale_factor) +
+  ylim(0, 15) +
+  labs(x = NULL, y = "GFAP+ % Area") +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, vjust = 1, hjust=1), axis.title.y = element_text(size = 15), axis.text.y = element_text(size = 12))
+
+p1
+```
+
+## Figure 5D
+
+```{r, fig.height=4, fig.width=3}
+stat.test <- quant %>%
+  rstatix::wilcox_test(NeuN_freq ~ Group) %>%
+  add_significance("p") %>%
+  add_xy_position(x = "Group", fun = "max")
+
+quant_plot <- quant %>% group_by(Group) %>% summarise(Mean = mean(NeuN_freq), SD = sd(NeuN_freq), n = n_distinct(BioID), SEM = SD/sqrt(n)) %>% ungroup()
+
+p2 <- ggplot(quant_plot) +
+  geom_bar( aes(x=Group, y=Mean, fill=Group), color="black", stat="identity", width = .7, linewidth = 0.5) +
+  geom_errorbar( aes(x=Group, ymin=Mean-SEM, ymax=Mean+SEM), width=0.2, linewidth = 0.5) +
+  geom_point(data = quant, aes(x=Group, y = NeuN_freq, fill=Group), shape=21, alpha = 0.4, size=.3*scale_factor, stroke=0.4, position=position_jitter(height=0, width=0)) +
+  stat_pvalue_manual(stat.test, label = "p.signif", tip.length = 0.005, size=8) +
+  scale_fill_manual(values = colorpal) +
+  theme_cowplot(10*scale_factor) +
+  ylim(0, 1.5) +
+  labs(x = NULL, y = "NeuN+ cell freq.") +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, vjust = 1, hjust=1), axis.title.y = element_text(size = 15), axis.text.y = element_text(size = 12))
+
+p2
+```
+
+## Figure 5E
+
+```{r, fig.height=4, fig.width=6}
+p3 <- ggscatter(quant %>% filter(Group == "Comp"), x = "GFAP_pct_area", y = "NeuN_freq",
+          color = "black",  shape = 21, size=.7*scale_factor, stroke=0.4, # Points color, shape and size
+          add = "reg.line",  # Add regressin line
+          add.params = list(color = colorpal[2], fill = "lightgray", size=.7), # Customize reg. line
+          conf.int = TRUE, # Add confidence interval
+          cor.coef = TRUE, # Add correlation coefficient. see ?stat_cor
+          cor.coeff.args = list(method = "pearson", size = 4, label.x = 5.5, label.y = 0.8, label.sep = "\n")) +
+  theme_cowplot(10*scale_factor) +
+  scale_x_continuous(n.breaks = 4) +  # Reduce x-axis ticks to ~4
+  scale_y_continuous(n.breaks = 4) +  # Reduce y-axis ticks to ~4
+  theme(legend.position = "none", axis.title.x = element_text(size = 14), axis.text.x = element_text(angle = 45, vjust = 1, hjust=1, size = 12), axis.title.y = element_text(size = 15), axis.text.y = element_text(size = 12)) +
+  labs(x = "GFAP+ % Area", y = "NeuN+ cell freq.")
+
+p3
+```
+
+## IVT Gap: MLS analysis
+
+```{r}
+# Preparing data
+d <- read.csv("data/IvyGap_MLS_Oncohabitats_V2.csv")
+d <- d %>% mutate(MLS = (MLS.4 + MLS.5 + MLS.6 + MLS.7)/4)
+d$Cavity.Rel <- NULL
+stat_colnames <- colnames(d)[c(10:(ncol(d)-1))]
+```
+
+```{r}
+# MLS LM
+model_est_all <- data.frame()
+for (i in stat_colnames) {
+  model <- lm(paste0(i, ' ~ MLS'), data = d)
+  model_est <- as.data.frame(t(summary(model)[["coefficients"]][2,]))
+  model_est$stat <- i
+  model_est_all <- rbind(model_est_all, model_est)
+}
+model_est_all %>% arrange(`Pr(>|t|)`)
+```
+Relative volume of edema appears to be one of the strongest predictors of midline shift.
+
+```{r}
+# Residualizing MLS
+d_nona <- d %>% drop_na()
+fit.svr <- lm(MLS ~ Edema.Rel, data = d_nona)
+d_nona$MLS_resid <- residuals(fit.svr)
+write.csv(d_nona, "results/IvyGap_MLS_Oncohabitats_MLS_resid.csv")
+
+# MLS resid LM
+model_est_all <- data.frame()
+for (i in stat_colnames) {
+  model <- lm(paste0(i, ' ~ MLS_resid'), data = d_nona)
+  model_est <- as.data.frame(t(summary(model)[["coefficients"]][2,]))
+  model_est$stat <- i
+  model_est_all <- rbind(model_est_all, model_est)
+}
+
+model_est_all %>% arrange(`Pr(>|t|)`)
+```
+
+It can be seen that the residuals are independent of edema volumes and now correlate with enhancing tumor volume which is more consistent with the definition of solid stress (i.e. due to solid elastic components of the tumor.)
+
+### Figure 5K
+
+```{r, fig.height=6, fig.width=2}
+ivy_gex <- read.csv("data/gene_expression_details.csv")
+ivy_gex <- ivy_gex %>% left_join(d_nona %>% select(Sample, MLS_resid, MLS), by = c("tumor_name" = "Sample")) %>% drop_na(MLS, expression_energy_le)
+all_genes <- ivy_gex %>% group_by(gene_symbol) %>% summarise(count = n()) %>% filter(count > 100) %>% pull(gene_symbol)
+ivy_gex <- ivy_gex %>% mutate(Classification = if_else(MLS_resid > 0, "high", "low"))
+
+le_ivy_gex <- ivy_gex %>%
+  filter(gene_symbol %in% all_genes) %>%
+  select(tumor_name, sub_block_name, gene_symbol, expression_energy_le, Classification) %>%
+  pivot_longer(expression_energy_le, names_to = "region", values_to = "expression_energy") %>%
+  group_by(gene_symbol, tumor_name)
+
+stat.test <- le_ivy_gex %>%
+  group_by(gene_symbol) %>%
+  rstatix::t_test(expression_energy ~ Classification, paired = F) %>%
+  adjust_pvalue() %>%
+  add_significance("p.adj") %>%
+  add_xy_position(x = "Classification", fun = "mean_se") %>%
+  mutate(y.position = y.position+10) %>%
+  arrange(p.adj)
+
+p <- ggbarplot(le_ivy_gex %>% filter(gene_symbol %in% stat.test[stat.test$p.adj<0.05,]$gene_symbol),
+               x = "Classification",
+               y = "expression_energy",
+               add = c("mean_se"),
+               fill = "Classification",
+               facet.by = "gene_symbol",
+               ncol = 1,
+               scales = "free_y",
+               error.plot = "upper_errorbar") +
+  geom_point(data = le_ivy_gex %>% filter(gene_symbol %in% stat.test[stat.test$p.adj<0.05,]$gene_symbol),
+             aes(x=Classification, y = expression_energy, fill=Classification), shape=21, alpha = 0.4, size=.1*scale_factor, position=position_jitter(height=0, width=0)) +
+  stat_pvalue_manual(stat.test, label = "p.adj.signif", tip.length = 0.005,  size=4*scale_factor, hide.ns=T) +
+  theme_cowplot(10*scale_factor) +
+  #facet_wrap(~gene_symbol, ncol=1, scales="free_y") +
+  #scale_y_continuous(limits = c(0, 100)) +
+  labs(y="ISH expr.", x = NULL) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1), axis.text.y=element_text(size=12), axis.title.y = element_text(size=15), legend.position = "none", strip.background = element_blank(), strip.text = element_text(face = "bold", size=8*scale_factor)) +
+  scale_alpha_discrete(range = c(0.4,1)) +
+  scale_fill_manual(values = rev(c("red", "#4040FF")))
+
+p
+```
+
+### Figure 5J
+
+#### Preprocess data
+
+```{r}
+count_mtx <- read_tsv("data/ivy_gap_rnaseq/counts_mtx.txt")
+count_mtx$Geneid <- mapIds(org.Hs.eg.db,
+                           keys=as.character(count_mtx$Geneid),
+                           column="SYMBOL",
+                           keytype="ENTREZID",
+                           multiVals="first")
+count_mtx <- count_mtx[!is.na(count_mtx$Geneid),]
+count_mtx <- as.data.frame(count_mtx)
+rownames(count_mtx) <- count_mtx$Geneid
+count_mtx$Geneid <- NULL
+
+samples = read_tsv("data/ivy_gap_rnaseq/columns-samples.tsv")
+samples <- as.data.frame(samples)
+rownames(samples) <- samples$rna_well_id
+samples <- samples[colnames(count_mtx),]
+
+classification <- read.csv("results/IvyGap_MLS_Oncohabitats_MLS_resid.csv")
+classification <- classification[,2:ncol(classification)]
+
+samples <- samples %>%
+  rownames_to_column() %>%
+  left_join(classification, by = c("tumor_name" = "Sample")) %>%
+  column_to_rownames() %>%
+  drop_na(structure) %>%
+  mutate(Classification = if_else(MLS_resid > quantile(classification$MLS_resid, .50), "high", "low"))
+
+keepY <- samples$structure=="LE"
+bk.dat <- count_mtx[,keepY]
+samples <- samples[keepY,]
+```
+
+#### DESeq2
+
+```{r}
+dds <- DESeqDataSetFromMatrix(countData = bk.dat,
+                              colData = samples,
+                              design =  ~ Classification)
+
+smallestGroupSize <- 4
+keep <- rowSums(counts(dds) >= 10) >= smallestGroupSize
+dds <- dds[keep,]
+dds <- estimateSizeFactors(dds)
+dds <- DESeq(dds)
+vsd <- vst(dds)
+res <- results(dds, alpha = 0.05, contrast=c("Classification", "high", "low"))
+```
+
+#### GSEA using HALLMARK sets
+
+```{r}
+res$Entrezid <- mapIds(org.Hs.eg.db,
+                       keys=rownames(res),
+                       keytype="SYMBOL",
+                       column="ENTREZID",
+                       multiVals="first")
+
+geneList <- res$log2FoldChange
+names(geneList) <- as.character(res$Entrezid)
+geneList <- sort(geneList, decreasing = TRUE)
+
+m_df <- msigdbr(species = "Homo sapiens")
+m_t2g <- msigdbr(species = "Homo sapiens", category = "H") %>% dplyr::select(gs_name, entrez_gene)
+
+hallmarkGSEA <- GSEA(geneList, TERM2GENE = m_t2g, pvalueCutoff=1)
+hallmarkGSEA <- hallmarkGSEA %>% as.data.frame() %>% filter(p.adjust < 0.05)
+
+hallmarkGSEA$Description_short <- unlist(lapply(hallmarkGSEA$Description, function(text, length = 45) {
+  if (nchar(text) > length) {
+    return(paste0(substr(text, 1, length), "..."))
+  } else {
+    return(text)
+  }
+}))
+
+hallmarkGSEA$ONTOLOGY_ID <- paste(hallmarkGSEA$ONTOLOGY, hallmarkGSEA$ID, sep = " ")
+hallmarkGSEA$Enrichment_Group <- if_else(hallmarkGSEA$NES > 0, "high", "low")
+
+hallmarkGSEA$logpadj <- -log10(hallmarkGSEA$p.adjust)
+description_pos <- hallmarkGSEA %>%
+  mutate(Pos = if_else(NES < 0, .2, -.2))
+hallmarkGSEA$Description_short <- gsub("HALLMARK_", "", hallmarkGSEA$Description_short)
+
+p <- ggplot(hallmarkGSEA %>% head(20), aes(reorder(Description_short, NES), NES, fill = logpadj)) +
+  geom_col(position = "dodge", color='black', linewidth = 0.5) +
+  scale_fill_gradient2(
+    low = "white", 
+    mid = "#FF4040",
+    high = "#FF4040",
+    midpoint = 8,
+    limits = c(0, 16)
+  ) +
+  scale_color_gradient2(
+    low = "white", 
+    mid = "#FF4040",
+    high = "#FF4040",
+    midpoint = 8,
+    limits = c(0, 16)
+  ) +
+  geom_text(data = hallmarkGSEA %>% head(20) %>% mutate(Dir = NES/abs(NES), FoldEnrichment_adj_abs = abs(NES)+0.05, FoldEnrichment_adj = FoldEnrichment_adj_abs*Dir), aes(x=Description_short, y = FoldEnrichment_adj, color=logpadj, label=Description_short), vjust=0.5, hjust = 0, size=2.5, color="black") +
+  xlab(NULL) +
+  ylab("NES") +
+  labs(fill = "logP") +
+  theme_cowplot(20) +
+  coord_capped_flip(bottom='both', left='none', right='both', top=brackets_horizontal(), ylim = c(0, 13)) +
+  theme(axis.text.y=element_blank(), 
+        axis.ticks.y=element_blank())
+p
+```
+
+## BayesPrism Deconvolution
+
+```{r, fig.height=4, fig.width=4}
+seurat_obj <- readRDS("data/GSE84465/seurat_obj.rds")
+cell.type.labels <- seurat_obj$cell.type
+cell.state.labels <- seurat_obj$cell.state
+sc.dat <- as.matrix(seurat_obj@assays$RNA$counts)
+
+# QC of cell type and state labels
+plot.cor.phi(input=t(sc.dat),
+              input.labels=cell.state.labels,
+              title="cell state correlation",
+              cexRow=1, cexCol=1,
+              margins=c(6,6))
+```
+
+```{r, fig.height=4, fig.width=4}
+plot.cor.phi (input=t(sc.dat), 
+              input.labels=cell.type.labels, 
+              title="cell type correlation",
+              cexRow=0.5, cexCol=0.5,
+)
+```
+
+```{r}
+sc.stat <- plot.scRNA.outlier(
+  input=t(sc.dat),
+  cell.type.labels=cell.type.labels,
+  species="hs",
+  return.raw=TRUE
+)
+
+filter <- (sc.stat$Rb | sc.stat$Mrp | sc.stat$other_Rb |  sc.stat$chrM | sc.stat$MALAT1 | sc.stat$chrX | sc.stat$chrY | sc.stat$act | sc.stat$hb)
+sc.dat.filtered <- sc.dat[!filter,]
+sc.dat.filtered.pc <-  select.gene.type (t(sc.dat.filtered),
+                                         gene.type = "protein_coding")
+sc.dat <- t(sc.dat)
+
+diff.exp.stat <- get.exp.stat(sc.dat=sc.dat[,colSums(sc.dat>0)>3],
+                              cell.type.labels=as.character(cell.type.labels),
+                              cell.state.labels=as.character(cell.state.labels),
+                              pseudo.count=0.1,
+                              cell.count.cutoff=50,
+                              n.cores=9
+)
+
+sc.dat.filtered.pc.sig <- select.marker(sc.dat=sc.dat.filtered.pc,
+                                         stat=diff.exp.stat,
+                                         pval.max=0.01,
+                                         lfc.min=2)
+
+# Filter bulk data
+dge <- DGEList(counts=bk.dat,
+               samples=samples)
+keep <- filterByExpr(dge)
+```
+
+```{r}
+myPrism <- new.prism(
+  reference=sc.dat.filtered.pc, 
+  mixture=t(bk.dat)[,keep],
+  input.type="count.matrix", 
+  cell.type.labels = cell.type.labels, 
+  cell.state.labels = cell.state.labels,
+  key="Glioma",
+  outlier.cut=0.01,
+  outlier.fraction=0.1,
+)
+
+# the output is cached
+# bp.res <- run.prism(prism = myPrism, n.cores=9)
+# saveRDS(bp.res, "data/BayesPrism_res.rds)
+bp.res <- readRDS("data/BayesPrism_res.rds")
+
+Z <- matrix(ncol = 11412)
+for (i in levels(cell.type.labels)) {
+  Z_sub <- get.exp(bp=bp.res,
+                      state.or.type="type",
+                      cell.name=i)
+  rownames(Z_sub) <- paste0(rownames(Z_sub), "_", i)
+  Z <- rbind(Z, Z_sub)
+}
+Z <- Z[2:nrow(Z),]
+
+Z_norm <- vst(round(t(Z)))
+Z_meta <- data.frame(Sample = str_split(colnames(Z_norm), "_", Inf, T)[,1], Cell_type = str_split(colnames(Z_norm), "_", Inf, T)[,2])
+```
+
+### Figure S6C
+
+```{r}
+sc_pseudobulk <- AggregateExpression(seurat_obj, group.by = c("cell.type"))$RNA
+sc_pseudobulk_meta <- data.frame(Cell_type = colnames(sc_pseudobulk))
+
+Z_meta$Group <- "Inferred"
+Z_meta$Size <- 1
+sc_pseudobulk_meta$Group <- "Ref"
+sc_pseudobulk_meta$Size <- 3
+
+merged_meta <- bind_rows(Z_meta, sc_pseudobulk_meta)
+shared_genes <- intersect(rownames(t(Z)), rownames(sc_pseudobulk))
+merged_data <- cbind(round(t(Z))[shared_genes,], sc_pseudobulk[shared_genes,])
+
+merged_data_norm <- vst(as.matrix(merged_data))
+pca <- prcomp(t(merged_data_norm))
+pc_scores <- pca$x[,1:2]
+p <- cbind(as.data.frame(pc_scores), merged_meta) %>%
+  ggplot(aes(x=PC1, y=PC2, color=Cell_type, shape=Group, size=Size)) +
+  geom_point() +
+  scale_shape_manual(values=c(15, 1)) +
+  cowplot::theme_cowplot(10*scale_factor) +
+  theme(axis.text=element_blank(),
+        axis.ticks=element_blank(),
+        legend.text = element_text(size=7*scale_factor)) +
+  labs(color = NULL) 
+
+p
+```
+
+## Figure S6D
+
+### Astrocytes
+
+```{r}
+neuron_mtx <- round(t(Z)[,Z_meta$Cell_type=="Astrocytes"])
+colnames(neuron_mtx) <- str_split(colnames(neuron_mtx), "_", Inf, T)[,1]
+
+dds <- DESeqDataSetFromMatrix(countData = neuron_mtx,
+                              colData = samples,
+                              design =  ~Classification)
+smallestGroupSize <- min(table(samples$Classification))
+keep <- rowSums(counts(dds) >= 10) >= smallestGroupSize
+dds <- dds[keep,]
+dds <- estimateSizeFactors(dds)
+dds <- DESeq(dds)
+vsd_bulk <- vst(dds)
+de_result <- results(dds, 
+                     contrast=c("Classification", "high", "low"))
+de_result <- as.data.frame(de_result)
+
+goGSEA <- GOgsea_hs_fun(de_result)
+```
+
+```{r, fig.height=5, fig.width=5}
+geneList <- de_result$log2FoldChange
+names(geneList) <- mapIds(org.Hs.eg.db,
+                          keys=rownames(de_result),
+                          column="ENTREZID",
+                          keytype="SYMBOL",
+                          multiVals = "first")
+geneList <- sort(geneList, decreasing = T)
+geneList <- geneList[!is.na(names(geneList))]
+
+m_df <- msigdbr(species = "Homo sapiens")
+m_t2g <- msigdbr(species = "Homo sapiens", category = "H") %>% dplyr::select(gs_name, entrez_gene)
+
+hallmarkGSEA <- GSEA(geneList, TERM2GENE = m_t2g, pvalueCutoff=1)
+
+hallmarkGSEA_readable <- as.data.frame(hallmarkGSEA)
+hallmarkGSEA_readable$DE <- call_DE_genes(hallmarkGSEA_readable$NES, hallmarkGSEA_readable$p.adjust, 0, 0.05)
+hallmarkGSEA_readable$logP <- -log10(hallmarkGSEA_readable$p.adjust)
+
+lab_df <- hallmarkGSEA_readable %>%
+  head(1)
+
+lab_df$Description <- "TNFA_\nSIGNALING_\nVIA_NFKB"
+
+col_vec <- c("#4040FF",
+            "lightgrey","#FF4040")
+
+names(col_vec) <- c(-1, 0, 1)
+
+p <- ggplot(hallmarkGSEA_readable %>%
+             arrange(desc(p.adjust)),
+           aes(x=NES, y=logP, color=factor(DE))) +
+  geom_point(size=1) +
+  coord_cartesian(xlim=c(-3, 3), ylim=c(0, 9)) +
+  geom_text_repel(data = lab_df,
+                  aes(x = NES, y = logP, label = Description),
+                  min.segment.length = .1,
+                  seed = 24,
+                  nudge_x = -7,
+                  nudge_y = -3,
+                  box.padding = .2,
+                  show.legend = FALSE,
+                  max.overlaps =10,
+                  size=4.8,
+                  hjust = 0
+  ) +
+  scale_color_manual(values = col_vec[names(col_vec) %in% unique(hallmarkGSEA_readable$DE)]) +
+  theme_cowplot(20) +
+  labs(x="NES",
+       y="-log10(FDR)") + 
+  theme(legend.position = "none"
+  )
+
+p
+```
+
+### Neurons
+
+```{r}
+neuron_mtx <- round(t(Z)[,Z_meta$Cell_type=="Neurons"])
+colnames(neuron_mtx) <- str_split(colnames(neuron_mtx), "_", Inf, T)[,1]
+
+dds <- DESeqDataSetFromMatrix(countData = neuron_mtx,
+                              colData = samples,
+                              design =  ~Classification)
+smallestGroupSize <- min(table(samples$Classification))
+keep <- rowSums(counts(dds) >= 10) >= smallestGroupSize
+dds <- dds[keep,]
+dds <- estimateSizeFactors(dds)
+dds <- DESeq(dds)
+vsd_bulk <- vst(dds)
+de_result <- results(dds, 
+                     contrast=c("Classification", "high", "low"))
+de_result <- as.data.frame(de_result)
+
+goGSEA <- GOgsea_hs_fun(de_result)
+```
+
+```{r, fig.height=5, fig.width=5}
+geneList <- de_result$log2FoldChange
+names(geneList) <- mapIds(org.Hs.eg.db,
+                          keys=rownames(de_result),
+                          column="ENTREZID",
+                          keytype="SYMBOL",
+                          multiVals = "first")
+geneList <- sort(geneList, decreasing = T)
+geneList <- geneList[!is.na(names(geneList))]
+
+m_df <- msigdbr(species = "Homo sapiens")
+m_t2g <- msigdbr(species = "Homo sapiens", category = "H") %>% dplyr::select(gs_name, entrez_gene)
+
+hallmarkGSEA <- GSEA(geneList, TERM2GENE = m_t2g, pvalueCutoff=1)
+
+hallmarkGSEA_readable <- as.data.frame(hallmarkGSEA)
+hallmarkGSEA_readable$DE <- call_DE_genes(hallmarkGSEA_readable$NES, hallmarkGSEA_readable$p.adjust, 0, 0.05)
+hallmarkGSEA_readable$logP <- -log10(hallmarkGSEA_readable$p.adjust)
+
+lab_df <- hallmarkGSEA_readable %>%
+  head(1)
+
+lab_df$Description <- "GLYCOLYSIS"
+
+col_vec <- c("#4040FF",
+            "lightgrey","#FF4040")
+
+names(col_vec) <- c(-1, 0, 1)
+
+p <- ggplot(hallmarkGSEA_readable %>%
+             arrange(desc(p.adjust)),
+           aes(x=NES, y=logP, color=factor(DE))) +
+  geom_point(size=1) +
+  coord_cartesian(xlim=c(-3, 3), ylim=c(0, 7)) +
+  geom_text_repel(data = lab_df,
+                  aes(x = NES, y = logP, label = Description),
+                  min.segment.length = .1,
+                  seed = 24,
+                  nudge_x = -6,
+                  nudge_y = -1,
+                  box.padding = .2,
+                  show.legend = FALSE,
+                  max.overlaps =10,
+                  hjust = 0,
+                  size=4.8
+  ) +
+  scale_color_manual(values = col_vec[names(col_vec) %in% unique(hallmarkGSEA_readable$DE)]) +
+  theme_cowplot(20) +
+  labs(x="NES",
+       y="-log10(FDR)") + 
+  theme(legend.position = "none"
+  )
+
+p
+```
+

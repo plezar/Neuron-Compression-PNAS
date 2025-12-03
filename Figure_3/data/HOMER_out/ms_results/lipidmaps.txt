@@ -1,0 +1,15 @@
+TermID	Term	Enrichment	logP	Genes in Term	Target Genes in Term	Fraction of Targets in Term	Total Target Genes	Total Genes	Entrez Gene IDs	Gene Symbols
+PI3K	PI3K/Akt/mTOR signaling pathway	0.0690323310628708	-2.67318031799914	92	19	0.301587301587302	63	416	18036,13684,74769,13682,18607,12675,20104,17246,19696,12575,14936,18035,13685,19744,22339,75705,13681,26987,19697	Nfkbib,Eif4e,Pik3cb,Eif4a2,Pdpk1,Chuk,Rps6,Mdm2,Rel,Cdkn1a,Gys1,Nfkbia,Eif4ebp1,Rheb,Vegfa,Eif4b,Eif4a1,Eif4e2,Rela
+ST	Sterols biosynthesis pathway	0.141869563512087	-1.9528472103382	9	3	0.0476190476190476	63	416	20775,20652,15357	Sqle,Soat1,Hmgcr
+CellCycle	Cell cycle signaling pathway	0.24226760940421	-1.41771233981408	95	17	0.26984126984127	63	416	104394,22642,12649,12575,17128,17246,18538,18817,12532,12530,18392,12577,56317,13197,26428,17126,17869	E2f4,Zbtb17,Chek1,Cdkn1a,Smad4,Mdm2,Pcna,Plk1,Cdc25c,Cdc25a,Orc1,Cdkn1c,Anapc7,Gadd45a,Orc4,Smad2,Myc
+SP	Sphingolipids metabolism pathway	0.290468691496188	-1.23625948303806	24	5	0.0793650793650794	63	416	20397,74442,20698,545975,241447	Sgpl1,Sgms2,Sphk1,Cers3,Cers6
+FAEicosanoids	Arachidonic acid metabolism pathway	0.406392435480231	-0.900435996374782	9	2	0.0317460317460317	63	416	19225,64292	Ptgs2,Ptges
+Apoptosis	Apoptosis signaling pathway	0.447694174451851	-0.803644925989073	74	12	0.19047619047619	63	416	14102,19087,12675,19696,19108,19697,18035,21933,18036,11783,18211,74769	Fas,Prkar2a,Chuk,Rel,Prkx,Rela,Nfkbia,Tnfrsf10b,Nfkbib,Apaf1,Ntrk1,Pik3cb
+GP	Glycerolipids/Glycerophospholipids metabolism pathway	0.569968564784157	-0.56217406917581	19	3	0.0476190476190476	63	416	13026,104418,68262	Pcyt1a,Dgkz,Agpat4
+TLR4	TLR4 (Toll-like receptor 4) signaling pathway	0.583922153775588	-0.537987603368394	67	10	0.158730158730159	63	416	16476,19225,18035,19697,18036,12675,14281,26419,26400,19696	Jun,Ptgs2,Nfkbia,Rela,Nfkbib,Chuk,Fos,Mapk8,Map2k7,Rel
+FAEicosanoidsCOX	Arachidonic acid metabolism via COX (Cyclooxygenase) pathway	0.812831944687358	-0.207230900903455	19	2	0.0317460317460317	63	416	19225,64292	Ptgs2,Ptges
+PPAR	PPAR (Peroxisome proliferator-activated receptor) signaling pathway	0.846853208279069	-0.166227907166537	45	5	0.0793650793650794	63	416	228026,16202,19016,17436,22190	Pdk1,Ilk,Pparg,Me1,Ubc
+FAOmega9AndOthersUnsaturated	Omega-9 and other unsaturated fatty acids biosynthesis pathway	0.90357852500502	-0.101392260712073	14	1	0.0158730158730159	63	416	50790	Acsl4
+FAOmega3And6Unsaturated	Omega-3 and omega-6 unsaturated fatty acids biosynthesis pathway	0.918689353180421	-0.0848072407776156	15	1	0.0158730158730159	63	416	50790	Acsl4
+FAEicosanoidsCYP	Arachidonic acid metabolism via CYP (Cytochromoe P450) pathway	1.00000000001915	1.91450543093804e-11	15	0	0	63	416
+FAEicosanoidsLOX	Arachidonic acid metabolism via LOX (Lipooxygenase) pathway	1.00000000002636	2.63592326504316e-11	20	0	0	63	416

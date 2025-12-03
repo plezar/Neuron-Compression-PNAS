@@ -1,0 +1,575 @@
+---
+title: "Figure 4"
+author: "Maksym Zarodniuk"
+date: "Compiled on `r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+```{r, include=FALSE}
+library(DESeq2)
+library(msigdbr)
+source("../Figure_3/util.R")
+library(ggrepel)
+library(ComplexHeatmap)
+library(circlize)
+library(RColorBrewer)
+library(tidyverse)
+library(AnnotationDbi)
+library(org.Hs.eg.db)
+library(clusterProfiler)
+library(cowplot)
+library(patchwork)
+```
+
+```{r}
+scale_factor <- 2
+count_matrix <- read.table("data/count_matrix.csv", sep = ",", header=TRUE, row.names = 1) 
+
+meta_data <- data.frame(Condition = c(rep("Compress", 3), rep("Control", 3)))
+rownames(meta_data) <- colnames(count_matrix)
+
+dds <- DESeqDataSetFromMatrix(countData = count_matrix,
+                              colData = meta_data,
+                              design =  ~ Condition)
+
+# pre-filtering
+smallestGroupSize <- 4
+keep <- rowSums(counts(dds) >= 10) >= smallestGroupSize
+dds <- dds[keep,]
+
+dds <- estimateSizeFactors(dds)
+dds <- DESeq(dds)
+vsd <- vst(dds)
+```
+
+```{r, fig.width=8, fig.height=3}
+pca <- prcomp(t(assay(vsd)))
+pc_scores <- pca$x[,1:2]
+
+shape_var <- vsd$Condition
+shape_var <- factor(shape_var)
+levels(shape_var) = c(16, 1)
+
+pca_ggplot <- cbind(as.data.frame(pc_scores), meta_data) %>%
+  ggplot(aes(x=PC1, y=PC2, color=Condition)) +
+  geom_point(size = 3) +
+  cowplot::theme_cowplot(14) +
+  scale_shape_manual(values=c(15, 16, 17)) +
+  scale_color_manual(values=c("#FF4040", "#4040FF")) +
+  theme(axis.text=element_blank(),
+        axis.ticks=element_blank())
+
+pca_ggplot
+```
+
+```{r}
+# ==== DEA =====
+res <- results(dds, alpha = 0.05, contrast=c("Condition", "Compress", "Control"))
+
+# ==== GSEA =====
+m_df <- msigdbr(species = "Homo sapiens")
+m_t2g <- msigdbr(species = "Homo sapiens", category = "H") %>% dplyr::select(gs_name, entrez_gene)
+
+geneList <- (res$log2FoldChange)
+names(geneList) <- mapIds(org.Hs.eg.db,
+                          keys=rownames(res),
+                          column="ENTREZID",
+                          keytype="ENSEMBL",
+                          multiVals = "first")
+
+geneList <- geneList[!is.na(names(geneList))]
+dups <- names(geneList)[duplicated(names(geneList))]
+geneList <- geneList[!names(geneList)%in%dups]
+
+geneList <- sort(geneList, decreasing = T)
+hallmarkGSEA <- GSEA(geneList, TERM2GENE = m_t2g, pvalueCutoff = 1)
+```
+
+## Figure 4B
+
+```{r, fig.height=4, fig.width=6}
+hallmarkGSEA_readable <- as.data.frame(hallmarkGSEA)
+hallmarkGSEA_readable$DE <- call_DE_genes(hallmarkGSEA_readable$NES, hallmarkGSEA_readable$p.adjust, 0, 0.05)
+hallmarkGSEA_readable$logP <- -log10(hallmarkGSEA_readable$p.adjust)
+
+lab_df <- hallmarkGSEA_readable %>%
+  filter(NES > 0 ,p.adjust < 0.05)
+
+lab_df$Description <- "TNFA_\nSIGNALING_\nVIA_NFKB"
+
+col_vec <- rev(c("#FF4040", "lightgrey", "#4040FF"))
+names(col_vec) <- c(-1, 0, 1)
+
+p1 <- ggplot(hallmarkGSEA_readable %>%
+             arrange(desc(p.adjust)),
+           aes(x=NES, y=logP, fill=factor(DE))) +
+  geom_point(size=.9*scale_factor, shape = 21) +
+  coord_cartesian(xlim=c(-3, 3), ylim=c(0, 13)) +
+  geom_text_repel(data = lab_df,
+                  aes(x = NES, y = logP, label = Description),
+                  min.segment.length = .1,
+                  seed = 24,
+                  nudge_x = -0,
+                  nudge_y = 8,
+                  box.padding = .2,
+                  show.legend = FALSE,
+                  max.overlaps =10,
+                  size=3*scale_factor
+  ) +
+  scale_fill_manual(values = col_vec[names(col_vec) %in% unique(hallmarkGSEA_readable$DE)]) +
+  theme_cowplot(10*scale_factor) +
+  labs(x="NES",
+       y="-log10(FDR)") + 
+  theme(legend.position = "none"
+  )
+
+p1
+```
+
+## Figure 4C
+
+```{r, fig.height=5, fig.width=5}
+entrez_ids <- str_split(as.data.frame(hallmarkGSEA)[as.data.frame(hallmarkGSEA)$Description=="HALLMARK_TNFA_SIGNALING_VIA_NFKB",]$core_enrichment, "/", Inf, T)[1,]
+
+genes_to_plot <- mapIds(org.Hs.eg.db,
+                        keys=entrez_ids,
+                        column="ENSEMBL",
+                        keytype="ENTREZID",
+                        multiVals = "first")
+
+tnfa_ranked_df <- as.data.frame(res) %>%
+  rownames_to_column("ensmebl") %>%
+  mutate(geneset = if_else(ensmebl %in% genes_to_plot, 1, 0)) %>%
+  filter(geneset == 1,) %>%
+  mutate(Rank=rank(-log2FoldChange)) %>%
+  arrange((Rank))
+
+tnfa_ranked_df$symbol <- mapIds(org.Hs.eg.db,
+                                keys=tnfa_ranked_df$ensmebl,
+                                column="SYMBOL",
+                                keytype="ENSEMBL",
+                                multiVals = "first")
+
+tnfa_ranked_df <- tnfa_ranked_df %>%
+  drop_na(symbol) %>%
+  mutate(color_group = if_else(log2FoldChange > 0, "compr", "contr"))
+
+exp_mtx <- t(scale(t(assay(vsd[tnfa_ranked_df[1:10,]$ensmebl,]))))
+lfc_mat <- as.matrix(tnfa_ranked_df[1:10,]$log2FoldChange)
+rownames(exp_mtx) <- tnfa_ranked_df[1:10,]$symbol
+rownames(lfc_mat) <- tnfa_ranked_df[1:10,]$symbol
+
+lfc_ht = Heatmap(lfc_mat,
+                 rect_gp = gpar(col = "white", lwd = 2),
+        col = colorRamp2(c(.5, 1.5), c("white", "darkgreen")),
+        cell_fun = function(j, i, x, y, width, height, fill) {
+          grid.text(sprintf("%.1f", lfc_mat[i, j]), x, y, gp = gpar(fontsize = 10))
+        },
+        name = "LFC")
+
+ht = Heatmap(exp_mtx,
+        rect_gp = gpar(col = "black", lwd = 2), show_column_dend = F, show_row_dend = F,
+        column_split = c(rep("Comp", 3), rep("Ctrl", 3)),
+        show_column_names = F,
+        name = "z")
+
+draw(ht + lfc_ht)
+```
+
+## Figure 4A
+
+```{r, include=FALSE}
+library(ggpubr)
+library(rstatix)
+library(RColorBrewer)
+library(cowplot)
+```
+
+```{r, fig.height=4, fig.width=3}
+gfap_dta <- read.csv("data/IHA_GFAP_data.csv")
+gfap_dta$Condition <- factor(gfap_dta$Condition, levels = c("Normoxia", "Hypoxia"))
+gfap_dta$Group <- factor(gfap_dta$Group, levels = c("Ctrl", "Comp"))
+
+scale_factor <- 2
+colorpal <- rev(c("#FF4040", "#4040FF"))
+replicate_labels <- data.frame(label = c("15/3", "19/3", "9/3", "12/3"), condition = c("Ctrl Normoxia", "Comp Normoxia", "Ctrl Hypoxia", "Comp Normoxia"))
+
+stat.test <- gfap_dta %>%
+  filter(Condition == "Normoxia") %>%
+  rstatix::t_test(Value ~ Group, paired = F) %>%
+  adjust_pvalue() %>%
+  add_significance("p") %>%
+  add_xy_position(x = "Group", fun = "mean_se", step.increase = 0.1)
+
+p1 <- ggbarplot(gfap_dta %>% filter(Condition == "Normoxia"),
+          x = "Group",
+          y = "Value",
+          add = c("mean_se"),
+          fill = "Group", 
+          error.plot = "upper_errorbar") +
+  geom_point(data = gfap_dta %>% filter(Condition == "Normoxia"), aes(x=Group, y = Value, fill=Group), shape=21, alpha = 0.4, size=.3*scale_factor, position=position_jitter(height=0, width=0)) +
+  stat_pvalue_manual(stat.test, label = "p.signif", tip.length = 0.005,  size=4*scale_factor, hide.ns=T) +
+  theme_cowplot(10*scale_factor) +
+  scale_y_continuous(limits = c(0, 20)) +
+  labs(y="GFAP MFI", x = NULL) +
+  theme(#axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        legend.position = "none",
+        plot.title = element_text(face = "bold"),
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  scale_fill_manual(values = colorpal)
+
+stat.test <- gfap_dta %>%
+  filter(Condition == "Hypoxia") %>%
+  rstatix::t_test(Value ~ Group, paired = F) %>%
+  adjust_pvalue() %>%
+  add_significance("p") %>%
+  add_xy_position(x = "Group", fun = "mean_se", step.increase = 0.1)
+
+p1
+```
+
+## Figure S3B
+
+```{r, fig.height=4, fig.width=3}
+stat.test <- gfap_dta %>%
+  filter(Condition == "Hypoxia") %>%
+  rstatix::t_test(Value ~ Group, paired = F) %>%
+  adjust_pvalue() %>%
+  add_significance("p") %>%
+  add_xy_position(x = "Group", fun = "mean_se", step.increase = 0.1)
+
+p2 <- ggbarplot(gfap_dta %>% filter(Condition == "Hypoxia"),
+                x = "Group",
+                y = "Value",
+                add = c("mean_se"),
+                fill = "Group", 
+                error.plot = "upper_errorbar") +
+  geom_point(data = gfap_dta %>% filter(Condition == "Hypoxia"), aes(x=Group, y = Value, fill=Group), shape=21, alpha = 0.4, size=.3*scale_factor, position=position_jitter(height=0, width=0)) +
+  stat_pvalue_manual(stat.test, label = "p.signif", tip.length = 0.005,  size=4*scale_factor, hide.ns=T) +
+  theme_cowplot(10*scale_factor) +
+  scale_y_continuous(limits = c(0, 40)) +
+  labs(y="GFAP MFI", x = NULL) +
+  theme(#axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+    legend.position = "none",
+    plot.title = element_text(face = "bold"),
+    axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  scale_fill_manual(values = colorpal)
+
+p2
+```
+
+## Figure 4E
+
+```{r, fig.height=4, fig.width=3}
+scale_factor <- 2
+mfi <- read.csv("data/ICC/FOSB/FOSB_MFI.csv")
+samples <- read.csv("data/ICC/FOSB/samples.csv")
+
+mfi$Mean <- mfi$Mean/100
+mfi$image_id <- as.numeric(str_split(mfi$ROI, "-", Inf, T)[,1])
+samples$image_id <- 1:nrow(samples)
+samples %>% mutate(Group = str_split(Sample, "_", Inf, T)[,5]) -> samples
+
+colorpal <- rev(c("#FF4040", "#4040FF"))
+
+mfi <- mfi %>% left_join(samples)  %>%
+  group_by(Group, image_id) %>%
+  summarise(MFI = mean(Mean)) %>%
+  ungroup()
+
+stat.test <- mfi %>%
+  rstatix::t_test(MFI ~ Group) %>%
+  add_significance("p") %>%
+  add_xy_position(x = "Group", fun = "max") %>%
+  mutate(p = round(p, 3))
+
+mfi$Group <- factor(mfi$Group, levels = c("Ctrl", "Compr"))
+levels(mfi$Group) <- c("Ctrl", "Comp")
+
+p1 <- ggbarplot(mfi,
+          x = "Group",
+          y = "MFI",
+          add = c("mean_se"),
+          fill = "Group",
+          error.plot = "upper_errorbar") +
+  geom_point(data = mfi, aes(x=Group, y = MFI, fill=Group), shape=21, alpha = 0.4, size=.3*scale_factor, position=position_jitter(height=0, width=0)) +
+  stat_pvalue_manual(stat.test, label = "p.signif", tip.length = 0.005,  size=4*scale_factor, hide.ns=T) +
+  theme_cowplot(10*scale_factor) +
+  scale_y_continuous(limits = c(0, 100)) +
+  labs(y="FOSB MFI", x = NULL) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1), legend.position = "none") +
+  scale_fill_manual(values = colorpal)
+
+p1
+```
+
+## Figure S3F
+
+```{r, fig.height=4, fig.width=3}
+mfi_nucl <- read.csv("data/ICC/HIF1/nuclear_MFI.csv")
+mfi_cyto <- read.csv("data/ICC/HIF1/cytoplasm_MFI.csv")
+samples <- read.csv("data/ICC/HIF1/samples.csv")
+
+mfi_nucl$image_id <- as.numeric(str_split(mfi_nucl$ROI, "-", Inf, T)[,1])
+samples$image_id <- 1:nrow(samples)
+samples %>% mutate(Group = str_split(Sample, "_", Inf, T)[,5]) -> samples
+
+mfi_nucl_ratio <- mfi_nucl %>% left_join(samples) %>%
+  group_by(Group, Sample, image_id) %>%
+  summarise(MFI_nucl = mean(Mean)) %>%
+  left_join(mfi_cyto %>% select(Sample, Mean_cyto = Mean)) %>%
+  mutate(Ratio = MFI_nucl/Mean_cyto) %>%
+  ungroup()
+
+mfi_nucl_ratio$MFI_nucl <- mfi_nucl_ratio$MFI_nucl/1000
+
+stat.test <- mfi_nucl_ratio %>%
+  rstatix::t_test(MFI_nucl ~ Group) %>%
+  add_significance("p") %>%
+  add_xy_position(x = "Group", fun = "max") %>%
+  mutate(p = round(p, 3))
+
+mfi_nucl_ratio$Group <- factor(mfi_nucl_ratio$Group, levels = c("Ctrl", "Compr"))
+levels(mfi_nucl_ratio$Group) <- c("Ctrl", "Comp")
+
+p <- ggbarplot(mfi_nucl_ratio,
+                x = "Group",
+                y = "MFI_nucl",
+                add = c("mean_se"),
+                fill = "Group",
+                error.plot = "upper_errorbar") +
+  geom_point(data = mfi_nucl_ratio, aes(x=Group, y = MFI_nucl, fill=Group), shape=21, alpha = 0.4, size=.3*scale_factor, position=position_jitter(height=0, width=0)) +
+  stat_pvalue_manual(stat.test, label = "p.signif", tip.length = 0.005,  size=4*scale_factor, hide.ns=F) +
+  theme_cowplot(10*scale_factor) +
+  scale_y_continuous(limits = c(0, 30)) +
+  labs(y="HIF1A MFI", x = NULL) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1), legend.position = "none") +
+  scale_fill_manual(values = colorpal)
+
+p
+```
+
+## Figure 4F
+
+```{r, include=FALSE}
+library(readxl)
+```
+
+```{r, fig.height=7, fig.width=3}
+Circularity_df <- read_xlsx("data/JM_morphology_101024.xlsx", sheet="Circularity")
+Soma_ratio_df <- read_xlsx("data/JM_morphology_101024.xlsx", sheet="Soma_ratio")
+Viability_df <- read_xlsx("data/JM_morphology_101024.xlsx", sheet="Viability")
+
+colorpal <- rev(c("#FF4040", "#4040FF"))
+
+## ===== Circularity =====
+
+Circularity_df$Condition <- factor(Circularity_df$Condition, levels = c("Control", "Compressed"))
+levels(Circularity_df$Condition) <- c("Ctrl", "Comp")
+
+stat.test <- Circularity_df %>%
+  t_test(Value ~ Condition, paired = F) %>%
+  adjust_pvalue() %>%
+  add_significance("p") %>%
+  add_xy_position(x = "Condition")
+
+p1 <- ggbarplot(Circularity_df,
+          x = "Condition",
+          y = "Value",
+          add = c("mean_se"),
+          fill = "Condition",
+          error.plot = "upper_errorbar") +
+  geom_point(data = Circularity_df, aes(x=Condition, y = Value, fill=Condition), shape=21, alpha = 0.4, size=.3*scale_factor, position=position_jitter(height=0, width=0)) +
+  stat_pvalue_manual(stat.test, label = "p.signif", tip.length = 0.005,  size=4*scale_factor, hide.ns=T) +
+  theme_cowplot(10*scale_factor) +
+  scale_y_continuous(limits = c(0, .7)) +
+  labs(y="Circularity", x = NULL) +
+  theme(legend.position = "none", axis.text.x = element_blank()) +
+  scale_fill_manual(values = colorpal)
+
+## ===== Soma Ratio =====
+
+Soma_ratio_df$Condition <- factor(Soma_ratio_df$Condition, levels = c("Control", "Compressed"))
+levels(Soma_ratio_df$Condition) <- c("Ctrl", "Comp")
+
+stat.test <- Soma_ratio_df %>%
+  t_test(Value ~ Condition, paired = F) %>%
+  adjust_pvalue() %>%
+  add_significance("p") %>%
+  add_xy_position(x = "Condition")
+
+p2 <- ggbarplot(Soma_ratio_df,
+                x = "Condition",
+                y = "Value",
+                add = c("mean_se"),
+                fill = "Condition",
+                error.plot = "upper_errorbar") +
+  geom_point(data = Soma_ratio_df, aes(x=Condition, y = Value, fill=Condition), shape=21, alpha = 0.4, size=.3*scale_factor, position=position_jitter(height=0, width=0)) +
+  stat_pvalue_manual(stat.test, label = "p.signif", tip.length = 0.005,  size=4*scale_factor, hide.ns=T) +
+  theme_cowplot(10*scale_factor) +
+  scale_y_continuous(limits = c(0, 4.5)) +
+  labs(y="Soma l:w", x = NULL) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1), legend.position = "none") +
+  scale_fill_manual(values = colorpal)
+
+p <- p1 + plot_spacer() + p2 + plot_layout(ncol=1, heights = c(1, 0.1, 1.1))
+p
+```
+
+## Figure 4D
+
+```{r, fig.height=3, fig.width=8}
+targets <- c("COL4A1", "FOS", "FOSB", "FOSL1", "FOSL2", "IL1b", "TNF")
+
+### ===== IHA 4h =====
+gene_data  <- read.csv("data/qPCR/2025-02-10 IHA GLIA compression 4h/targets.csv")
+rq_results <- read.csv("data/qPCR/2025-02-10 IHA GLIA compression 4h/rq_results.csv", comment.char = "#")
+sample_data <- read.csv("data/qPCR/2025-02-10 IHA GLIA compression 4h/samples_IHA.csv")
+IHA_4h <- calc_RQ(sample_data, rq_results, gene_data)
+
+### ===== uGlia 4h =====
+sample_data <- read.csv("data/qPCR/2025-02-10 IHA GLIA compression 4h/samples_uGlia.csv")
+rq_results <- read.csv("data/qPCR/2025-02-10 IHA GLIA compression 4h/rq_results.csv", comment.char = "#")
+gene_data <- read.csv("data/qPCR/2025-02-10 IHA GLIA compression 4h/targets.csv")
+uGlia_4h <- calc_RQ(sample_data, rq_results, gene_data)
+
+### ===== uGlia 24h =====
+sample_data <- read.csv("data/qPCR/2025-02-20 IHA GLIA compression/uG_samples.csv")
+rq_results <- read.csv("data/qPCR/2025-02-20 IHA GLIA compression/uG_rq_results.csv", comment.char = "#")
+gene_data <- read.csv("data/qPCR/2025-02-20 IHA GLIA compression/uG_targets.csv")
+uGlia_24h <- calc_RQ(sample_data, rq_results, gene_data)
+
+### ===== IHA 24h, part A =====
+sample_data <- read.csv("data/qPCR/2025-01-11 IHA compression/samples.csv")
+rq_results <- read.csv("data/qPCR/2025-01-11 IHA compression/rq_results.csv", comment.char = "#")
+gene_data <- read.csv("data/qPCR/2025-01-11 IHA compression/targets.csv")
+IHA_24h_A <- calc_RQ(sample_data, rq_results, gene_data)
+
+### ===== IHA 24h part B =====
+sample_data <- read.csv("data/qPCR/2025-02-20 IHA GLIA compression/IHA_samples.csv")
+rq_results <- read.csv("data/qPCR/2025-02-20 IHA GLIA compression/IHA_rq_results.csv", comment.char = "#")
+gene_data <- read.csv("data/qPCR/2025-02-20 IHA GLIA compression/IHA_targets.csv")
+IHA_24h_B <- calc_RQ(sample_data, rq_results, gene_data)
+
+IHA_24h <- rbind(IHA_24h_A, IHA_24h_B)
+
+## ===== Plotting =====
+
+IHA_4h$Timepoint <- "4h"
+IHA_24h$Timepoint <- "24h"
+IHA <- rbind(IHA_24h, IHA_4h)
+IHA <- IHA %>% filter(Target %in% targets)
+
+stat.test <- IHA %>%
+  group_by(Target, Timepoint) %>%
+  t_test(logRQ ~ Biogroup) %>%
+  adjust_pvalue(method="fdr") %>%
+  add_significance("p", cutpoints = c(0, 1e-04, 0.001, 0.01, 0.1, 1)) %>%
+  add_xy_position(x = "Timepoint", fun = "mean_se")
+
+IHA$Timepoint <- factor(IHA$Timepoint, levels = c("4h", "24h"))
+y <- IHA %>%
+  filter(Biogroup == "Comp") %>%
+  group_by(Target, Timepoint, Biogroup) %>%
+  summarise(Mean_logRQ = mean(logRQ), SE_Mean_logRQ = sd(logRQ)/sqrt(n()))
+
+p1 <- ggplot(y, aes(x=Timepoint, y=Mean_logRQ, group=Biogroup, color=Biogroup)) + 
+  geom_errorbar(aes(ymin=Mean_logRQ-SE_Mean_logRQ, ymax=Mean_logRQ+SE_Mean_logRQ), width=0, 
+                position=position_dodge(0.05)) +
+  geom_point(data = IHA %>% filter(Biogroup == "Comp"), aes(x=Timepoint, y = logRQ, fill=Biogroup), shape=21, alpha = 0.4, size=.3*scale_factor, position=position_jitter(height=0, width=0)) +
+  geom_line() +
+  geom_point(size=1*scale_factor) +
+  geom_text(data = stat.test %>% mutate(x = if_else(Timepoint == "4h", 1, 2), label = if_else(p.signif=="ns", "", p.signif), Biogroup = "Comp") %>% select(x, y = y.position, Target, Biogroup, label), 
+            aes(x = x, y = y, label = label), size = 5*scale_factor, color = "black") +
+  #stat_pvalue_manual(e, label = "p.signif", tip.length = 0.005,  size=4*scale_factor, hide.ns=T) +
+  facet_grid(~Target) +
+  theme_cowplot(10*scale_factor) +
+  geom_hline(yintercept = 0) +
+  scale_color_manual(values = "red") +
+  scale_fill_manual(values = "red") +
+  labs(x = NULL, y = "LFC") +
+  theme(axis.line.x = element_blank(), axis.text.x = element_text(angle = 45, vjust = 1, hjust=1), legend.position = "none", strip.background = element_rect(fill="white"), strip.text = element_text(face = "bold", size = 15))
+
+p1
+```
+
+```{r, fig.height=3, fig.width=8}
+uGlia_4h$Timepoint <- "4h"
+uGlia_24h$Timepoint <- "24h"
+uGlia <- rbind(uGlia_24h, uGlia_4h)
+uGlia <- uGlia %>% filter(Target %in% targets)
+
+stat.test = uGlia %>%
+  group_by(Target, Timepoint) %>%
+  t_test(logRQ ~ Biogroup) %>%
+  adjust_pvalue(method="fdr") %>%
+  add_significance("p", cutpoints = c(0, 1e-04, 0.001, 0.01, 0.1, 1)) %>%
+  add_xy_position(x = "Timepoint", fun = "mean_se")
+
+uGlia$Timepoint <- factor(uGlia$Timepoint, levels = c("4h", "24h"))
+y <- uGlia %>%
+  filter(Biogroup == "Comp") %>%
+  group_by(Target, Timepoint, Biogroup) %>%
+  summarise(Mean_logRQ = mean(logRQ), SE_Mean_logRQ = sd(logRQ)/sqrt(n()))
+
+p2 <- ggplot(y, aes(x=Timepoint, y=Mean_logRQ, group=Biogroup, color=Biogroup)) + 
+  geom_errorbar(aes(ymin=Mean_logRQ-SE_Mean_logRQ, ymax=Mean_logRQ+SE_Mean_logRQ), width=0, 
+                position=position_dodge(0.05)) +
+  geom_point(data = uGlia %>% filter(Biogroup == "Comp"), aes(x=Timepoint, y = logRQ, fill=Biogroup), shape=21, alpha = 0.4, size=.3*scale_factor, position=position_jitter(height=0, width=0)) +
+  geom_line() +
+  geom_point(size=1*scale_factor) +
+  geom_text(data = stat.test %>% mutate(x = if_else(Timepoint == "4h", 1, 2), label = if_else(p.signif=="ns", "", p.signif), Biogroup = "Comp") %>% select(x, y = y.position, Target, Biogroup, label), 
+            aes(x = x, y = y, label = label), size = 5*scale_factor, color = "black") +
+  #stat_pvalue_manual(e, label = "p.signif", tip.length = 0.005,  size=4*scale_factor, hide.ns=T) +
+  facet_grid(~Target) +
+  theme_cowplot(10*scale_factor) +
+  geom_hline(yintercept = 0) +
+  scale_color_manual(values = "red") +
+  scale_fill_manual(values = "red") +
+  labs(x = NULL, y = "LFC") +
+  theme(axis.line.x = element_blank(), axis.text.x = element_text(angle = 45, vjust = 1, hjust=1), legend.position = "none", strip.background = element_rect(fill="white"), strip.text = element_text(face = "bold", size = 15))
+
+p2
+```
+
+## Figure S3D
+
+```{r, fig.height=4, fig.width=3}
+mfi_d <- read.csv("data/mfi_data.csv")
+colorpal <- rev(c("#FF4040", "#4040FF", "grey"))
+
+mfi_d$Samlpe_Name <- paste0(mfi_d$Group1, " ", mfi_d$Group2)
+mfi_d$Samlpe_Name <- factor(mfi_d$Samlpe_Name, levels = c("Ctrl Hypox", "Ctrl Norm", "Compr Norm"))
+levels(mfi_d$Samlpe_Name) <- c("Hypox", "Normox", "Comp")
+mfi_d %>% drop_na(Samlpe_Name) -> mfi_d
+
+stat.test <- mfi_d %>%
+  rstatix::t_test(MFI ~ Samlpe_Name) %>%
+  add_significance("p") %>%
+  add_xy_position(x = "Samlpe_Name", fun = "max")
+stat.test <- stat.test[c(1, 3),]
+
+mfi_d_plot <- mfi_d %>% group_by(Samlpe_Name) %>% summarise(Mean = mean(MFI), SD = sd(MFI), n = n(), SEM = SD/sqrt(n)) %>% ungroup()
+
+p <- ggplot(mfi_d_plot) +
+  geom_bar( aes(x=Samlpe_Name, y=Mean, fill=Samlpe_Name), color="black", stat="identity") +
+  geom_errorbar( aes(x=Samlpe_Name, ymin=Mean-SEM, ymax=Mean+SEM), width=0.1) +
+  geom_point(data = mfi_d, aes(x=Samlpe_Name, y = MFI, fill=Samlpe_Name), shape=21, alpha = 0.4, size=.3*scale_factor, position=position_jitter(height=0, width=0)) +
+  stat_pvalue_manual(stat.test, label = "p.signif", tip.length = 0.005, size=8) +
+  scale_fill_manual(values = colorpal) +
+  theme_cowplot(10*scale_factor) +
+  ylim(0, 20000) +
+  labs(x = NULL, y = "HPTK MFI") +
+  theme(legend.position = "none", axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
+
+p
+```
+
+```{r}
+sessionInfo()
+```
+

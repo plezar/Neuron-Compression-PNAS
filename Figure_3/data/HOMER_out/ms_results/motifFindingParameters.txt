@@ -1,0 +1,1 @@
+cmd = /Volumes/TOSHIBA/Patzke_project/RNA-seq/DEGs/iN1_glia_DEGs.txt mouse ms_results/ -start -400 -end 100 -len 8,10 -p 10
