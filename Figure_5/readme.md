@@ -22,9 +22,6 @@
 #### `02_analyze.py`
 - Loads slice-level FosB quantification data, extracts the middle 20 z-slices from each ND2 series, computes per-series averaged FosB ratios, performs group-wise statistics, and generates summary plots and CSV outputs.
 
-#### `03_figure_s5.Rmd`
-- Figure S5C
-
 ### `05_figure_5.Rmd`
 - Figure 5C
 - Figure 5D

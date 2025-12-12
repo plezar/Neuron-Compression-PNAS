@@ -7,31 +7,29 @@ This repository contains all code and accompanying files required to reproduce t
 
 ---
 
-## Overview
-
-This repository provides reproducible R- and MATLAB-based pipelines used to generate all figures presented in the manuscript. Each figure is accompanied by its own `.Rmd` file (and additional scripts where applicable), enabling full regeneration of results. All analyses use publicly available or soon-to-be–public datasets. Pre-rendered HTML files are also included for convenient browsing without re-running code.
-
----
-
 ## Repository Structure
 
-Only top-level figure directories are described below. Each contains its own `README` file, analysis scripts, data subdirectories, and rendered outputs.
+Only top-level figure directories are described below. Some of these contains its own `README` file.
 
 ### **`Figure_1/`**
-Contains scripts and data supporting quantification of neuronal viability, nuclear morphology, and glial reactivity following mechanical compression. Includes raw CSV measurements and rendered output figures.
+Contains scripts and data supporting quantification of live/dead imaging data.
 
 ### **`Figure_2/`**
 Contains MATLAB and Python scripts for quantitative calcium imaging analysis, including fluorescence extraction, spike detection, and spectral characterization of neuronal activity.
 
 ### **`Figure_3/`**
-Includes all workflows for bulk RNA-seq differential expression, GSEA/ORA, HOMER motif analysis, sample preprocessing, and supporting datasets for both mouse and human compressed neuron models.
+Includes all workflows for bulk RNA-seq data preprocessing, differential expression, GSEA/ORA, HOMER motif analysis, and supporting datasets for both mouse and human compressed neuron models.
 
 ### **`Figure_4/`**
-Contains analyses of immunocytochemistry (ICC), immunohistochemistry (IHC), morphology quantification, qPCR datasets, and associated R Markdown files supporting molecular and phenotypic responses to compression.
+Includes all workflows for bulk RNA-seq data preprocessing, differential expression, GSEA/ORA for comressed human astrocytes. Also contains analyses of immunocytochemistry (ICC), morphology quantification, qPCR datasets supporting molecular and phenotypic responses to compression.
 
 ### **`Figure_5/`**
 Includes preprocessing, QC, Seurat workflows, multi-dataset integration, BayesPrism outputs, and all scripts used to analyze and visualize single-cell and spatially informed human GBM datasets relevant to mechanical stress signatures.
 
+### **Other files**
+- **`Patzke-Datta.Rproj`** — RStudio project file.
+
+---
 
 ## Data Availability
 

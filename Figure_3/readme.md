@@ -6,7 +6,7 @@
 
 ### `02_gsea.R`
 - Performs GO and Hallmark GSEA for each iN and mGlia cell line using DESeq2 differential expression results, generating both readable tables and merged summary files.
-- Converts gene identifiers, filters for overlapping genes where needed, runs clusterProfiler GSEA, and saves merged outputs for downstream visualization and figure generation.
+- Converts gene identifiers, filters for overlapping genes where needed, runs `clusterProfiler` GSEA, and saves merged outputs for downstream visualization and figure generation.
 
 ### `03_figure3.Rmd`
 - Figure S1C
